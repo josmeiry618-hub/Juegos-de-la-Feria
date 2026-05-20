@@ -1,0 +1,1475 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Pez León: Invasor del Caribe</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Exo+2:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ocean-deep: #001220;
+  --ocean-mid: #003459;
+  --ocean-light: #0077b6;
+  --ocean-surface: #00b4d8;
+  --coral: #ff6b35;
+  --coral-bright: #ff9a3c;
+  --seaweed: #2d6a4f;
+  --gold: #ffd700;
+  --danger: #ff0040;
+  --hud-bg: rgba(0,10,30,0.75);
+  --white: #e8f4f8;
+}
+
+* {
+  margin: 0; padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: var(--ocean-deep);
+  font-family: 'Exo 2', sans-serif;
+}
+
+/* ─── CANVAS ─── */
+canvas {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  display: block;
+}
+
+/* ─── HUD ─── */
+#hud {
+  position: fixed;
+  top: 14px; left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 16px;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.hud-box {
+  background: var(--hud-bg);
+  border: 1px solid rgba(0,180,216,0.4);
+  border-radius: 12px;
+  padding: 8px 18px;
+  color: var(--white);
+  font-family: 'Orbitron', monospace;
+  font-size: 14px;
+  backdrop-filter: blur(8px);
+  text-align: center;
+  min-width: 90px;
+  box-shadow: 0 0 12px rgba(0,180,216,0.2);
+}
+
+.hud-box .label {
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: var(--ocean-surface);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.hud-box .value {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--gold);
+  line-height: 1;
+}
+
+.hud-box .value.danger { color: var(--danger); animation: pulse 0.5s infinite alternate; }
+
+@keyframes pulse { from { opacity:1; } to { opacity:0.5; } }
+
+/* health bar */
+#health-bar-wrap {
+  position: fixed;
+  top: 80px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#health-bar-outer {
+  width: 220px; height: 14px;
+  background: rgba(0,0,0,0.5);
+  border-radius: 7px;
+  border: 1px solid rgba(255,100,50,0.4);
+  overflow: hidden;
+}
+
+#health-bar-inner {
+  height: 100%;
+  border-radius: 7px;
+  background: linear-gradient(90deg, #ff6b35, #ffd700);
+  transition: width 0.3s;
+  width: 100%;
+}
+
+.health-label {
+  font-family: 'Orbitron', monospace;
+  font-size: 10px;
+  color: var(--coral);
+  letter-spacing: 1px;
+}
+
+/* ─── DAMAGE OVERLAY ─── */
+#damage-overlay {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 60%, rgba(255,0,40,0.6) 100%);
+  pointer-events: none;
+  z-index: 25;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+/* ─── JOYSTICK ─── */
+#joystick-zone {
+  position: fixed;
+  bottom: 30px; left: 30px;
+  width: 150px; height: 150px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.07);
+  border: 2px solid rgba(0,180,216,0.35);
+  z-index: 40;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#joystick-stick {
+  width: 60px; height: 60px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.9), rgba(0,180,216,0.6));
+  box-shadow: 0 0 15px rgba(0,180,216,0.5);
+  position: absolute;
+  pointer-events: none;
+  transition: transform 0.05s;
+}
+
+/* ─── CONTROLS HINT ─── */
+#controls-hint {
+  position: fixed;
+  bottom: 14px; right: 20px;
+  color: rgba(255,255,255,0.45);
+  font-size: 11px;
+  z-index: 30;
+  line-height: 1.6;
+  text-align: right;
+  pointer-events: none;
+}
+
+/* ─── GAME OVER ─── */
+#game-over {
+  position: fixed; inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(6px);
+}
+
+#game-over.reef-ending {
+  align-items: flex-end;
+  background: rgba(0,0,0,0.22);
+  backdrop-filter: none;
+  padding: 0 20px 28px;
+}
+
+#game-over.win-ending {
+  background:
+    radial-gradient(circle at 50% 38%, rgba(255,215,0,0.32), transparent 34%),
+    radial-gradient(circle at 20% 20%, rgba(0,180,216,0.2), transparent 24%),
+    rgba(0, 10, 28, 0.78);
+  backdrop-filter: blur(5px);
+}
+
+.go-box {
+  background: linear-gradient(160deg, rgba(0,20,50,0.97), rgba(0,10,30,0.97));
+  border: 1px solid rgba(0,180,216,0.4);
+  border-radius: 24px;
+  padding: 40px 50px;
+  text-align: center;
+  color: var(--white);
+  box-shadow: 0 0 60px rgba(0,100,200,0.3);
+  max-width: 500px;
+  width: 90%;
+}
+
+#game-over.reef-ending .go-box {
+  max-width: 760px;
+  padding: 22px 30px;
+  background: rgba(8,12,16,0.9);
+  border-color: rgba(255,107,53,0.55);
+  box-shadow: 0 0 35px rgba(0,0,0,0.45);
+}
+
+#game-over.win-ending .go-box {
+  position: relative;
+  overflow: hidden;
+  border: 2px solid rgba(255,215,0,0.82);
+  background:
+    linear-gradient(160deg, rgba(0,67,92,0.98), rgba(0,24,50,0.98)),
+    radial-gradient(circle at 50% 0%, rgba(255,215,0,0.28), transparent 46%);
+  box-shadow: 0 0 45px rgba(255,215,0,0.42), 0 0 90px rgba(0,180,216,0.28);
+  animation: winBoxPop 0.65s ease-out both;
+}
+
+#game-over.win-ending .go-box::before,
+#game-over.win-ending .go-box::after {
+  content: "";
+  position: absolute;
+  inset: -30%;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle, #ffd700 0 3px, transparent 4px),
+    radial-gradient(circle, #ff6b35 0 3px, transparent 4px),
+    radial-gradient(circle, #00b4d8 0 3px, transparent 4px),
+    radial-gradient(circle, #e8f4f8 0 2px, transparent 3px);
+  background-size: 70px 80px, 90px 100px, 86px 72px, 64px 92px;
+  background-position: 0 0, 32px 18px, 18px 42px, 48px 6px;
+  opacity: 0.42;
+  animation: confettiFall 2.6s linear infinite;
+}
+
+#game-over.win-ending .go-box::after {
+  opacity: 0.3;
+  animation-duration: 3.4s;
+  animation-delay: -1.2s;
+}
+
+.win-prize {
+  position: relative;
+  z-index: 1;
+  display: inline-grid;
+  place-items: center;
+  width: 86px;
+  height: 86px;
+  margin-bottom: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,215,0,0.96), rgba(255,154,60,0.9));
+  box-shadow: 0 0 28px rgba(255,215,0,0.58);
+  font-size: 44px;
+  animation: prizeBounce 1.2s ease-in-out infinite;
+}
+
+#game-over.win-ending .go-box h2,
+#game-over.win-ending .go-score,
+#game-over.win-ending .go-box p,
+#game-over.win-ending .go-box button {
+  position: relative;
+  z-index: 1;
+}
+
+#game-over.win-ending .go-box h2 {
+  color: var(--gold);
+  text-shadow: 0 0 20px rgba(255,215,0,0.7);
+}
+
+@keyframes winBoxPop {
+  0% { opacity: 0; transform: scale(0.86) translateY(18px); }
+  70% { opacity: 1; transform: scale(1.03) translateY(0); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes prizeBounce {
+  0%, 100% { transform: translateY(0) rotate(-5deg); }
+  50% { transform: translateY(-8px) rotate(5deg); }
+}
+
+@keyframes confettiFall {
+  from { transform: translateY(-12%); }
+  to { transform: translateY(12%); }
+}
+
+.go-box h2 {
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(16px, 4vw, 26px);
+  margin-bottom: 10px;
+  letter-spacing: 2px;
+}
+
+.go-box p {
+  font-size: 14px;
+  color: rgba(200,230,255,0.7);
+  margin-bottom: 6px;
+  line-height: 1.6;
+}
+
+.go-score {
+  font-family: 'Orbitron', monospace;
+  font-size: 48px;
+  font-weight: 900;
+  color: var(--gold);
+  margin: 16px 0;
+  text-shadow: 0 0 20px rgba(255,215,0,0.5);
+}
+
+.go-box button {
+  margin-top: 20px;
+  padding: 14px 34px;
+  font-family: 'Orbitron', monospace;
+  font-size: 14px;
+  letter-spacing: 2px;
+  background: linear-gradient(90deg, #0077b6, #00b4d8);
+  border: none; border-radius: 50px;
+  color: white; cursor: pointer;
+  box-shadow: 0 0 20px rgba(0,180,216,0.4);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.go-box button:hover {
+  transform: scale(1.04);
+  box-shadow: 0 0 30px rgba(0,180,216,0.7);
+}
+
+/* ─── INTRO ─── */
+#intro {
+  position: fixed; inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 70;
+  background: linear-gradient(170deg, #001220, #003459);
+}
+
+.intro-box {
+  text-align: center;
+  color: var(--white);
+  padding: 40px;
+  max-width: 560px;
+}
+
+.intro-box h1 {
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(20px, 5vw, 36px);
+  font-weight: 900;
+  letter-spacing: 3px;
+  color: var(--gold);
+  text-shadow: 0 0 30px rgba(255,215,0,0.5);
+  margin-bottom: 8px;
+}
+
+.intro-box .sub {
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: var(--ocean-surface);
+  text-transform: uppercase;
+  margin-bottom: 28px;
+}
+
+.intro-box p {
+  font-size: 15px;
+  color: rgba(200,230,255,0.8);
+  line-height: 1.7;
+  margin-bottom: 12px;
+}
+
+.intro-fish-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 40px;
+  margin: 24px 0;
+  font-size: 60px;
+}
+
+.intro-fish-img {
+  width: 112px;
+  height: 84px;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+  filter: drop-shadow(0 8px 18px rgba(0,0,0,0.35));
+}
+
+.intro-box button {
+  padding: 16px 40px;
+  font-family: 'Orbitron', monospace;
+  font-size: 15px;
+  letter-spacing: 3px;
+  background: linear-gradient(90deg, #ff6b35, #ff9a3c);
+  border: none; border-radius: 50px;
+  color: white; cursor: pointer;
+  box-shadow: 0 0 30px rgba(255,107,53,0.5);
+  margin-top: 10px;
+  transition: transform 0.15s;
+}
+
+.intro-box button:hover { transform: scale(1.05); }
+
+/* ─── FLOATING TEXT ─── */
+.float-text {
+  position: fixed;
+  font-family: 'Orbitron', monospace;
+  font-weight: 700;
+  pointer-events: none;
+  z-index: 50;
+  animation: floatUp 1.2s ease-out forwards;
+}
+
+@keyframes floatUp {
+  0%   { opacity:1; transform: translateY(0) scale(1); }
+  100% { opacity:0; transform: translateY(-70px) scale(1.3); }
+}
+
+/* ─── PAUSE OVERLAY ─── */
+#pause-overlay {
+  position: fixed; inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 55;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+}
+
+#pause-overlay h2 {
+  font-family: 'Orbitron', monospace;
+  color: var(--gold);
+  font-size: 40px;
+  letter-spacing: 6px;
+}
+
+#level-banner {
+  position: fixed;
+  inset: 0;
+  z-index: 52;
+  display: none;
+  place-items: center;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 50% 45%, rgba(255,215,0,0.2), transparent 34%),
+    rgba(0, 40, 70, 0.26);
+  animation: levelWash 1.8s ease-out forwards;
+}
+
+#level-banner.show { display: grid; }
+
+.level-card {
+  width: min(420px, 84vw);
+  padding: 26px 28px;
+  text-align: center;
+  color: var(--white);
+  background: rgba(0, 18, 32, 0.82);
+  border: 2px solid rgba(255, 215, 0, 0.75);
+  border-radius: 18px;
+  box-shadow: 0 0 38px rgba(255, 215, 0, 0.35), 0 0 80px rgba(0, 180, 216, 0.2);
+  animation: levelCardPop 1.8s ease-out forwards;
+}
+
+.level-card .label {
+  font-family: 'Orbitron', monospace;
+  font-size: 12px;
+  letter-spacing: 4px;
+  color: var(--ocean-surface);
+}
+
+.level-card .number {
+  font-family: 'Orbitron', monospace;
+  font-size: clamp(46px, 14vw, 82px);
+  line-height: 1;
+  color: var(--gold);
+  text-shadow: 0 0 22px rgba(255,215,0,0.6);
+  margin: 6px 0 10px;
+}
+
+.level-card .message {
+  font-size: 15px;
+  color: rgba(232,244,248,0.85);
+}
+
+.hud-box.level-pulse { animation: hudLevelPulse 0.65s ease-out 3; }
+
+@keyframes levelWash {
+  0% { opacity: 0; }
+  12% { opacity: 1; }
+  72% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes levelCardPop {
+  0% { opacity: 0; transform: scale(0.82) translateY(18px); }
+  18% { opacity: 1; transform: scale(1.04) translateY(0); }
+  70% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.96) translateY(-14px); }
+}
+
+@keyframes hudLevelPulse {
+  0% { box-shadow: 0 0 12px rgba(0,180,216,0.2); transform: translateY(0); }
+  45% { box-shadow: 0 0 26px rgba(255,215,0,0.7); transform: translateY(-3px); }
+  100% { box-shadow: 0 0 12px rgba(0,180,216,0.2); transform: translateY(0); }
+}
+</style>
+</head>
+<body>
+
+<!-- INTRO SCREEN -->
+<div id="intro">
+  <div class="intro-box">
+    <h1>PEZ LEÓN</h1>
+    <div class="sub">Invasor del Caribe &bull; Rep. Dominicana</div>
+    <div class="intro-fish-row">
+      <img class="intro-fish-img" src="Pez%20loro.png" alt="Tú: Pez Loro" title="Tú: Pez Loro">
+      <span style="font-size:36px;line-height:60px;color:var(--danger)">VS</span>
+      <img class="intro-fish-img" src="Pez%20le%C3%B3n.jpg" alt="Enemigo: Pez León" title="Enemigo: Pez León">
+    </div>
+    <p>El <strong>pez león</strong> es una especie invasora que está destruyendo los arrecifes coralinos del Caribe dominicano. ¡Eres un pez loro y debes sobrevivir!</p>
+    <p>Recoge <strong>corales 🪸</strong> para ganar puntos y <strong>sobrevive 10 y 20 segundos</strong>. En cada nivel llegan más peces león porque se reproducen muy rápido.</p>
+    <button onclick="startGame()">▶ INICIAR MISIÓN</button>
+  </div>
+</div>
+
+<!-- CANVAS -->
+<canvas id="game"></canvas>
+
+<!-- DAMAGE OVERLAY -->
+<div id="damage-overlay"></div>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="hud-box">
+    <div class="label">Puntos</div>
+    <div class="value" id="score-val">0</div>
+  </div>
+  <div class="hud-box">
+    <div class="label">Tiempo</div>
+    <div class="value" id="time-val">10</div>
+  </div>
+  <div class="hud-box">
+    <div class="label">Nivel</div>
+    <div class="value" id="level-val">1</div>
+  </div>
+</div>
+
+<div id="health-bar-wrap">
+  <span class="health-label">ARRECIFE</span>
+  <div id="health-bar-outer">
+    <div id="health-bar-inner"></div>
+  </div>
+  <span class="health-label" id="hp-num">100%</span>
+</div>
+
+<!-- JOYSTICK -->
+<div id="joystick-zone">
+  <div id="joystick-stick"></div>
+</div>
+
+<!-- CONTROLS HINT -->
+<div id="controls-hint">
+  ⬆⬇⬅➡ Mover &nbsp;&nbsp;P Pausar
+</div>
+
+<!-- PAUSE -->
+<div id="pause-overlay"><h2>PAUSA</h2></div>
+
+<!-- LEVEL TRANSITION -->
+<div id="level-banner" aria-hidden="true">
+  <div class="level-card">
+    <div class="label">NUEVO NIVEL</div>
+    <div class="number" id="level-banner-number">1</div>
+    <div class="message" id="level-banner-message">Preparate</div>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div id="game-over">
+  <div class="go-box">
+    <h2 id="go-title"></h2>
+    <div class="go-score" id="go-score"></div>
+    <p id="go-msg"></p>
+    <button onclick="location.reload()">JUGAR DE NUEVO</button>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+//  SETUP
+// ═══════════════════════════════════════════════
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── STATE ───
+const LEVELS = [
+  { targetLions: 1, speed: 1.7, seconds: 10 },
+  { targetLions: 5, speed: 2.65, seconds: 20 },
+];
+
+let score = 0, timeLeft = LEVELS[0].seconds, level = 1;
+let reefHealth = 100;
+let paused = false, gameOver = false, gameStarted = false;
+let lastTime = 0, accumulator = 0;
+const STEP = 1000/60;
+
+// ─── DOM ───
+const scoreEl   = document.getElementById('score-val');
+const timeEl    = document.getElementById('time-val');
+const levelEl   = document.getElementById('level-val');
+const hpInner   = document.getElementById('health-bar-inner');
+const hpNum     = document.getElementById('hp-num');
+const goScreen  = document.getElementById('game-over');
+const goTitle   = document.getElementById('go-title');
+const goScore   = document.getElementById('go-score');
+const goMsg     = document.getElementById('go-msg');
+const dmgOvl    = document.getElementById('damage-overlay');
+const pauseOvl  = document.getElementById('pause-overlay');
+const levelBanner = document.getElementById('level-banner');
+const levelBannerNumber = document.getElementById('level-banner-number');
+const levelBannerMessage = document.getElementById('level-banner-message');
+
+// ═══════════════════════════════════════════════
+//  EMOJI DRAWING HELPERS
+// ═══════════════════════════════════════════════
+function drawEmoji(emoji, x, y, size, flipH = false) {
+  ctx.save();
+  ctx.font = `${size}px serif`;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign    = 'center';
+  if (flipH) {
+    ctx.scale(-1, 1);
+    ctx.fillText(emoji, -x, y);
+  } else {
+    ctx.fillText(emoji, x, y);
+  }
+  ctx.restore();
+}
+
+const fishImages = {
+  parrot: Object.assign(new Image(), { src: 'Pez%20loro.png' }),
+  lion: Object.assign(new Image(), { src: 'Pez%20le%C3%B3n.jpg' }),
+};
+const cleanFishImages = new WeakMap();
+
+function getCleanFishImage(img) {
+  if (!img.complete || img.naturalWidth === 0) return null;
+  if (cleanFishImages.has(img)) return cleanFishImages.get(img);
+
+  const offscreen = document.createElement('canvas');
+  offscreen.width = img.naturalWidth;
+  offscreen.height = img.naturalHeight;
+
+  const offCtx = offscreen.getContext('2d');
+  offCtx.drawImage(img, 0, 0);
+
+  const frame = offCtx.getImageData(0, 0, offscreen.width, offscreen.height);
+  const data = frame.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i + 1], b = data[i + 2];
+    if (r > 225 && g > 225 && b > 225) data[i + 3] = 0;
+  }
+  offCtx.putImageData(frame, 0, 0);
+  cleanFishImages.set(img, offscreen);
+  return offscreen;
+}
+
+function drawFishImage(img, fallbackEmoji, x, y, w, h, flipH = false, angle = 0) {
+  const cleanImg = getCleanFishImage(img);
+  if (!cleanImg) {
+    drawEmoji(fallbackEmoji, x, y, Math.max(w, h) * 0.8, flipH);
+    return;
+  }
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  if (flipH) ctx.scale(-1, 1);
+  ctx.drawImage(cleanImg, -w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════
+//  PLAYER (Pez Loro / Parrotfish)
+// ═══════════════════════════════════════════════
+const player = {
+  x: 180, y: 300,
+  w: 64, h: 48,
+  speed: 6.2,
+  vx: 0, vy: 0,
+  invincible: 0,
+  trail: [],
+  facingLeft: false,
+  angle: 0,
+};
+
+// ═══════════════════════════════════════════════
+//  LION FISH ENEMIES
+// ═══════════════════════════════════════════════
+class LionFish {
+  constructor(x, y, speed) {
+    this.x = x; this.y = y;
+    this.w = 80; this.h = 60;
+    this.speed = speed;
+    this.angle = 0;
+    this.wobble = Math.random() * Math.PI * 2;
+    this.facingLeft = false;
+  }
+  update() {
+    this.wobble += 0.04;
+    const dx = player.x - this.x;
+    const dy = player.y - this.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist > 1) {
+      this.x += (dx/dist) * this.speed + Math.sin(this.wobble)*0.5;
+      this.y += (dy/dist) * this.speed + Math.cos(this.wobble)*0.5;
+    }
+    this.facingLeft = dx < 0;
+    const horizontal = Math.max(Math.abs(dx), 1);
+    const targetAngle = Math.atan2(dy, horizontal) * (this.facingLeft ? -0.35 : 0.35);
+    this.angle += (targetAngle - this.angle) * 0.08;
+    // Clamp
+    this.x = Math.max(this.w/2, Math.min(W - this.w/2, this.x));
+    this.y = Math.max(this.h/2, Math.min(H - this.h/2, this.y));
+  }
+  draw() {
+    // Spiky glow aura
+    ctx.save();
+    ctx.globalAlpha = 0.18 + 0.07 * Math.sin(this.wobble * 2);
+    const grad = ctx.createRadialGradient(this.x, this.y, 10, this.x, this.y, 70);
+    grad.addColorStop(0, '#ff4d00');
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, 70, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    // Draw spines
+    const spineCount = 12;
+    for (let i = 0; i < spineCount; i++) {
+      const a = (i / spineCount) * Math.PI * 2 + this.wobble * 0.3;
+      const len = 28 + 8 * Math.sin(i * 0.8 + this.wobble);
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,${80 + i*10},0,0.8)`;
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(this.x + Math.cos(a)*22, this.y + Math.sin(a)*18);
+      ctx.lineTo(this.x + Math.cos(a)*len, this.y + Math.sin(a)*len);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Body
+    drawFishImage(fishImages.lion, '🦁', this.x, this.y, 104, 76, this.facingLeft, this.angle);
+  }
+  collides() {
+    if (player.invincible > 0) return false;
+    const dx = player.x - this.x;
+    const dy = player.y - this.y;
+    return Math.abs(dx) < 64 && Math.abs(dy) < 52;
+  }
+}
+
+let lions = [];
+
+// ═══════════════════════════════════════════════
+//  COLLECTIBLES
+// ═══════════════════════════════════════════════
+class Collectible {
+  constructor() { this.spawn(); }
+  spawn() {
+    const margin = 80;
+    this.x = margin + Math.random() * (W - margin*2);
+    this.y = margin + Math.random() * (H - margin*2);
+    // Pick random type
+    const r = Math.random();
+    if (r < 0.5)      { this.type = 'coral';  this.emoji = '🪸'; this.pts = 15; this.size = 34; }
+    else if (r < 0.75){ this.type = 'shell';  this.emoji = '🐚'; this.pts = 10; this.size = 30; }
+    else if (r < 0.9) { this.type = 'fish';   this.emoji = '🐟'; this.pts = 25; this.size = 32; }
+    else               { this.type = 'star';   this.emoji = '⭐'; this.pts = 50; this.size = 36; }
+    this.pulse = Math.random() * Math.PI * 2;
+    this.alive = true;
+  }
+  update() { this.pulse += 0.06; }
+  draw() {
+    const s = this.size + 3 * Math.sin(this.pulse);
+    ctx.save();
+    ctx.globalAlpha = 0.85 + 0.15 * Math.sin(this.pulse);
+    // glow
+    const gl = ctx.createRadialGradient(this.x, this.y, 2, this.x, this.y, s);
+    gl.addColorStop(0, 'rgba(255,215,0,0.25)');
+    gl.addColorStop(1, 'transparent');
+    ctx.fillStyle = gl;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, s, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+    drawEmoji(this.emoji, this.x, this.y, s);
+  }
+  collides() {
+    const dx = player.x - this.x;
+    const dy = player.y - this.y;
+    return Math.sqrt(dx*dx + dy*dy) < 42;
+  }
+}
+
+let collectibles = [];
+function spawnCollectibles(count = 10) {
+  while (collectibles.length < count) collectibles.push(new Collectible());
+}
+
+// ═══════════════════════════════════════════════
+//  PARTICLES
+// ═══════════════════════════════════════════════
+let particles = [];
+
+function spawnParticles(x, y, color, count = 8) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const spd = 1.5 + Math.random() * 3;
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * spd,
+      vy: Math.sin(a) * spd,
+      r: 3 + Math.random() * 5,
+      life: 1,
+      decay: 0.025 + Math.random() * 0.03,
+      color
+    });
+  }
+}
+
+function updateParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.05;
+    p.life -= p.decay;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  BUBBLES
+// ═══════════════════════════════════════════════
+let bubbles = [];
+function spawnBubble() {
+  bubbles.push({
+    x: Math.random() * W,
+    y: H + 10,
+    r: 2 + Math.random() * 7,
+    speed: 0.6 + Math.random() * 1.4,
+    wobble: Math.random() * Math.PI * 2,
+    wobbleSpeed: 0.02 + Math.random() * 0.02,
+  });
+}
+setInterval(() => { if (!paused && !gameOver && gameStarted) spawnBubble(); }, 280);
+
+// ═══════════════════════════════════════════════
+//  SEAWEED (polluted state)
+// ═══════════════════════════════════════════════
+let seaweeds = [];
+function buildSeaweeds() {
+  seaweeds = [];
+  const count = Math.floor(W / 60) + 3;
+  for (let i = 0; i < count; i++) {
+    seaweeds.push({
+      x: i * 60 + Math.random() * 30,
+      h: 60 + Math.random() * 120,
+      wave: Math.random() * Math.PI * 2,
+    });
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  FLOATING SCORE TEXT
+// ═══════════════════════════════════════════════
+let floatTexts = [];
+function addFloatText(x, y, text, color) {
+  floatTexts.push({ x, y, text, color, life: 1.2, vy: -1.5 });
+}
+
+function updateFloatTexts() {
+  for (let i = floatTexts.length - 1; i >= 0; i--) {
+    const ft = floatTexts[i];
+    ft.y += ft.vy;
+    ft.life -= 0.02;
+    if (ft.life <= 0) floatTexts.splice(i, 1);
+  }
+}
+
+function drawFloatTexts() {
+  floatTexts.forEach(ft => {
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, ft.life * 2);
+    ctx.font = "bold 22px 'Orbitron', monospace";
+    ctx.fillStyle = ft.color;
+    ctx.textAlign = 'center';
+    ctx.fillText(ft.text, ft.x, ft.y);
+    ctx.restore();
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  INPUTS
+// ═══════════════════════════════════════════════
+const keys = {};
+document.addEventListener('keydown', e => {
+  keys[e.key] = true;
+  if (e.key === 'p' || e.key === 'P') togglePause();
+  if (e.key === 'Escape') togglePause();
+  e.preventDefault();
+});
+document.addEventListener('keyup',  e => { keys[e.key] = false; });
+
+// JOYSTICK
+const joystickZone  = document.getElementById('joystick-zone');
+const joystickStick = document.getElementById('joystick-stick');
+let joyActive = false, joyVec = {x:0, y:0};
+const JOY_R = 75; // zone radius
+const STICK_R = 45; // max stick travel
+
+joystickZone.addEventListener('touchstart', e => { joyActive = true; e.preventDefault(); }, {passive:false});
+joystickZone.addEventListener('touchmove',  e => {
+  e.preventDefault();
+  const t   = e.touches[0];
+  const rect = joystickZone.getBoundingClientRect();
+  const cx   = rect.left + rect.width/2;
+  const cy   = rect.top  + rect.height/2;
+  let dx = t.clientX - cx;
+  let dy = t.clientY - cy;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist > STICK_R) { dx *= STICK_R/dist; dy *= STICK_R/dist; }
+  joystickStick.style.transform = `translate(${dx}px, ${dy}px)`;
+  joyVec.x = dx / STICK_R;
+  joyVec.y = dy / STICK_R;
+}, {passive:false});
+joystickZone.addEventListener('touchend', e => {
+  joyActive = false;
+  joyVec.x = 0; joyVec.y = 0;
+  joystickStick.style.transform = 'translate(0px,0px)';
+}, {passive:false});
+
+// ═══════════════════════════════════════════════
+//  REEF HEALTH
+// ═══════════════════════════════════════════════
+// GAMEPAD / PS5 DUALSENSE
+const GAMEPAD_DEADZONE = 0.18;
+const GAMEPAD_PAUSE_BUTTON = 9; // Options button on PlayStation controllers
+let activeGamepadIndex = null;
+let gamepadPauseWasPressed = false;
+
+window.addEventListener('gamepadconnected', e => {
+  activeGamepadIndex = e.gamepad.index;
+});
+
+window.addEventListener('gamepaddisconnected', e => {
+  if (activeGamepadIndex === e.gamepad.index) activeGamepadIndex = null;
+});
+
+function getActiveGamepad() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  if (activeGamepadIndex !== null && pads[activeGamepadIndex]) return pads[activeGamepadIndex];
+  for (const pad of pads) {
+    if (pad) {
+      activeGamepadIndex = pad.index;
+      return pad;
+    }
+  }
+  return null;
+}
+
+function cleanGamepadAxis(value) {
+  return Math.abs(value) < GAMEPAD_DEADZONE ? 0 : value;
+}
+
+function getGamepadMove() {
+  const pad = getActiveGamepad();
+  if (!pad) return { x: 0, y: 0 };
+  return {
+    x: cleanGamepadAxis(pad.axes[0] || 0),
+    y: cleanGamepadAxis(pad.axes[1] || 0)
+  };
+}
+
+function pollGamepadPause() {
+  const pad = getActiveGamepad();
+  const pausePressed = !!pad?.buttons[GAMEPAD_PAUSE_BUTTON]?.pressed;
+  if (pausePressed && !gamepadPauseWasPressed) togglePause();
+  gamepadPauseWasPressed = pausePressed;
+}
+
+function damageReef(amt = 20) {
+  reefHealth = Math.max(0, reefHealth - amt);
+  hpInner.style.width = reefHealth + '%';
+  hpNum.textContent   = reefHealth + '%';
+  if (reefHealth <= 30) hpInner.style.background = 'linear-gradient(90deg,#ff0040,#ff6b00)';
+  else if (reefHealth <= 60) hpInner.style.background = 'linear-gradient(90deg,#ff6b35,#ffd700)';
+  // Flash damage overlay
+  dmgOvl.style.opacity = '1';
+  setTimeout(() => { dmgOvl.style.opacity = '0'; }, 300);
+  if (reefHealth <= 0) endGame(false);
+}
+
+// ═══════════════════════════════════════════════
+//  BACKGROUND DRAWING
+// ═══════════════════════════════════════════════
+let bgSeaweedTimer = 0;
+
+function drawBackground(dead) {
+  // Sky / gradient
+  if (!dead) {
+    const grad = ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0, '#0096c7');
+    grad.addColorStop(0.5, '#023e8a');
+    grad.addColorStop(1, '#03045e');
+    ctx.fillStyle = grad;
+  } else {
+    const grad = ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0, '#2b2d42');
+    grad.addColorStop(0.5, '#1a1a2e');
+    grad.addColorStop(1, '#0d0d0d');
+    ctx.fillStyle = grad;
+  }
+  ctx.fillRect(0, 0, W, H);
+
+  // Light rays (only alive)
+  if (!dead) {
+    ctx.save();
+    for (let i = 0; i < 5; i++) {
+      const rx = W * (0.1 + i * 0.22) + Math.sin(Date.now()/4000 + i) * 40;
+      const gr = ctx.createLinearGradient(rx, 0, rx + 60, H * 0.7);
+      gr.addColorStop(0, 'rgba(180,240,255,0.07)');
+      gr.addColorStop(1, 'transparent');
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.moveTo(rx, 0);
+      ctx.lineTo(rx + 80, H * 0.7);
+      ctx.lineTo(rx + 20, H * 0.7);
+      ctx.lineTo(rx - 20, 0);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Sandy floor
+  const floorY = H - 60;
+  ctx.save();
+  ctx.fillStyle = dead ? '#3d2b1f' : '#c9a84c';
+  ctx.fillRect(0, floorY, W, 60);
+  // sand ripples
+  ctx.strokeStyle = dead ? 'rgba(50,30,15,0.5)' : 'rgba(160,120,40,0.4)';
+  ctx.lineWidth = 1.5;
+  for (let sx = 0; sx < W; sx += 30) {
+    ctx.beginPath();
+    ctx.moveTo(sx, floorY + 15);
+    ctx.quadraticCurveTo(sx + 15, floorY + 8, sx + 30, floorY + 15);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Coral / rocks on floor
+  if (!dead) {
+    const coralItems = ['🪸','🐠','🐡','🦀','🦞'];
+    const step = Math.floor(W / 12);
+    for (let i = 0; i < 12; i++) {
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      drawEmoji(coralItems[i % coralItems.length], i * step + 20, floorY - 14, 30 + (i%3)*6);
+      ctx.restore();
+    }
+  } else {
+    // Dead reef — dark algae
+    const deadItems = ['☠','🪨','☠','🌿','🪨'];
+    const step = Math.floor(W / 12);
+    for (let i = 0; i < 12; i++) {
+      ctx.save();
+      ctx.globalAlpha = 0.7;
+      drawEmoji(deadItems[i % deadItems.length], i * step + 20, floorY - 14, 28 + (i%3)*5);
+      ctx.restore();
+    }
+
+    for (let i = 0; i < 10; i++) {
+      const x = i * (W / 9) + Math.sin(i * 1.7) * 18;
+      const y = floorY - 10 - (i % 3) * 5;
+      ctx.save();
+      ctx.globalAlpha = 0.58;
+      ctx.strokeStyle = 'rgba(180,175,150,0.7)';
+      ctx.fillStyle = 'rgba(45,38,32,0.82)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.ellipse(x, floorY + 2, 34 + (i % 2) * 12, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y - 34);
+      ctx.moveTo(x, y - 16);
+      ctx.lineTo(x - 16, y - 32);
+      ctx.moveTo(x, y - 18);
+      ctx.lineTo(x + 18, y - 38);
+      ctx.moveTo(x, y - 27);
+      ctx.lineTo(x - 8, y - 45);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // Seaweed / algae (dead = ugly green algae)
+  bgSeaweedTimer += 0.015;
+  ctx.save();
+  for (const sw of seaweeds) {
+    sw.wave += 0.02;
+    const waveAmt = 12;
+    if (!dead) {
+      ctx.strokeStyle = '#2d6a4f';
+      ctx.lineWidth = 5;
+    } else {
+      ctx.strokeStyle = '#4a7c59';
+      ctx.lineWidth = dead ? 8 : 5;
+    }
+    ctx.beginPath();
+    ctx.moveTo(sw.x, H - 60);
+    // S-curve with wave
+    ctx.bezierCurveTo(
+      sw.x + Math.sin(sw.wave) * waveAmt, H - 60 - sw.h * 0.3,
+      sw.x - Math.sin(sw.wave) * waveAmt, H - 60 - sw.h * 0.6,
+      sw.x + Math.sin(sw.wave * 0.7) * waveAmt * 0.5, H - 60 - sw.h
+    );
+    ctx.stroke();
+    if (dead) {
+      // extra algae blobs on top
+      ctx.fillStyle = 'rgba(50,120,60,0.6)';
+      ctx.beginPath();
+      ctx.ellipse(sw.x, H - 60 - sw.h, 10, 6, Math.sin(sw.wave) * 0.4, 0, Math.PI*2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+
+  // Bubbles
+  bubbles.forEach((b, i) => {
+    b.wobble += b.wobbleSpeed;
+    b.y -= b.speed;
+    b.x += Math.sin(b.wobble) * 0.5;
+    ctx.save();
+    ctx.globalAlpha = 0.3 + 0.2 * Math.sin(b.wobble);
+    ctx.strokeStyle = 'rgba(180,230,255,0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r, 0, Math.PI*2);
+    ctx.stroke();
+    // shine
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.beginPath();
+    ctx.arc(b.x - b.r*0.3, b.y - b.r*0.3, b.r*0.3, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+    if (b.y < -20) bubbles.splice(i, 1);
+  });
+
+  // Dead overlay vignette
+  if (dead) {
+    const vig = ctx.createRadialGradient(W/2, H/2, H*0.2, W/2, H/2, H*0.8);
+    vig.addColorStop(0, 'transparent');
+    vig.addColorStop(1, 'rgba(0,0,0,0.6)');
+    ctx.fillStyle = vig;
+    ctx.fillRect(0, 0, W, H);
+
+    // Algae film overlay
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = '#4a7c59';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  PLAYER TRAIL
+// ═══════════════════════════════════════════════
+function drawPlayerTrail() {
+  for (let i = 0; i < player.trail.length; i++) {
+    const t = player.trail[i];
+    const a = (i / player.trail.length) * 0.25;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, 18 * (i / player.trail.length), 0, Math.PI*2);
+    ctx.fillStyle = '#00ff88';
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  PLAYER DRAWING
+// ═══════════════════════════════════════════════
+function drawPlayer() {
+  // Trail
+  drawPlayerTrail();
+
+  // Invincibility flicker
+  if (player.invincible > 0 && Math.floor(player.invincible / 4) % 2 === 0) return;
+
+  // Soft glow
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  const grd = ctx.createRadialGradient(player.x, player.y, 5, player.x, player.y, 45);
+  grd.addColorStop(0, '#00ff88');
+  grd.addColorStop(1, 'transparent');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, 45, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  drawFishImage(fishImages.parrot, '🦜', player.x, player.y, 88, 66, !player.facingLeft, player.angle);
+}
+
+// ═══════════════════════════════════════════════
+//  GAME LOGIC
+// ═══════════════════════════════════════════════
+function movePlayer() {
+  let vx = 0, vy = 0;
+  if (keys['ArrowLeft']  || keys['a'] || keys['A']) vx -= 1;
+  if (keys['ArrowRight'] || keys['d'] || keys['D']) vx += 1;
+  if (keys['ArrowUp']    || keys['w'] || keys['W']) vy -= 1;
+  if (keys['ArrowDown']  || keys['s'] || keys['S']) vy += 1;
+
+  if (joyActive) { vx += joyVec.x; vy += joyVec.y; }
+  const gamepadMove = getGamepadMove();
+  vx += gamepadMove.x;
+  vy += gamepadMove.y;
+
+  if (vx !== 0 || vy !== 0) {
+    const len = Math.sqrt(vx*vx + vy*vy);
+    vx /= len; vy /= len;
+  }
+
+  player.x += vx * player.speed;
+  player.y += vy * player.speed;
+
+  if (vx > 0) player.facingLeft = false;
+  if (vx < 0) player.facingLeft = true;
+  player.vx = vx;
+  player.vy = vy;
+  if (vx !== 0 || vy !== 0) {
+    const horizontal = Math.max(Math.abs(vx), 0.35);
+    const targetAngle = Math.atan2(vy, horizontal) * (player.facingLeft ? -0.45 : 0.45);
+    player.angle += (targetAngle - player.angle) * 0.18;
+  } else {
+    player.angle *= 0.9;
+  }
+
+  // Trail
+  player.trail.push({ x: player.x, y: player.y });
+  if (player.trail.length > 12) player.trail.shift();
+
+  // Clamp
+  player.x = Math.max(30, Math.min(W - 30, player.x));
+  player.y = Math.max(30, Math.min(H - 80, player.y));
+}
+
+function togglePause() {
+  if (gameOver) return;
+  paused = !paused;
+  pauseOvl.style.display = paused ? 'flex' : 'none';
+}
+
+function getLevelConfig() {
+  return LEVELS[Math.min(level - 1, LEVELS.length - 1)];
+}
+
+function applyLevelDifficulty(showMessage = false) {
+  const config = getLevelConfig();
+  levelEl.textContent = level;
+  lions.forEach(l => { l.speed = config.speed; });
+
+  while (lions.length < config.targetLions) {
+    addLion(config.speed);
+  }
+
+  if (showMessage) {
+    showLevelBanner(level, `Sobrevive ${config.seconds} segundos mas`);
+    addFloatText(W/2, H/2 - 44, `NIVEL ${level}!`, '#ffd700');
+    addFloatText(W/2, H/2 - 10, 'El pez león se reproduce rápido', '#ff9a3c');
+    spawnParticles(W/2, H/2, '#ffd700', 22);
+  }
+}
+
+function showLevelBanner(nextLevel, message) {
+  const levelBox = levelEl.closest('.hud-box');
+  levelBannerNumber.textContent = nextLevel;
+  levelBannerMessage.textContent = message;
+  levelBanner.classList.remove('show');
+  void levelBanner.offsetWidth;
+  levelBanner.classList.add('show');
+  levelBox.classList.remove('level-pulse');
+  void levelBox.offsetWidth;
+  levelBox.classList.add('level-pulse');
+  setTimeout(() => levelBanner.classList.remove('show'), 1800);
+}
+
+function advanceLevel() {
+  if (level >= LEVELS.length) {
+    endGame(true);
+    return;
+  }
+
+  level++;
+  timeLeft = getLevelConfig().seconds;
+  timeEl.textContent = timeLeft;
+  timeEl.classList.remove('danger');
+  applyLevelDifficulty(true);
+}
+
+function addLion(speed = getLevelConfig().speed) {
+  // Spawn far from player
+  let x, y;
+  do {
+    x = Math.random() * W;
+    y = Math.random() * (H - 100);
+  } while (Math.abs(x - player.x) < 280 && Math.abs(y - player.y) < 240);
+  lions.push(new LionFish(x, y, speed));
+}
+
+// ═══════════════════════════════════════════════
+//  TIMER
+// ═══════════════════════════════════════════════
+let timerInterval;
+function startTimer() {
+  timerInterval = setInterval(() => {
+    if (paused || gameOver) return;
+    timeLeft--;
+    timeEl.textContent = timeLeft;
+    if (timeLeft <= 10) timeEl.classList.add('danger');
+    if (timeLeft <= 0) advanceLevel();
+  }, 1000);
+}
+
+// ═══════════════════════════════════════════════
+//  END GAME
+// ═══════════════════════════════════════════════
+let dead = false; // reef dead state
+
+function endGame(won) {
+  if (gameOver) return;
+  gameOver = true;
+  clearInterval(timerInterval);
+
+  if (!won) {
+    dead = true;
+    goScreen.classList.add('reef-ending');
+    // Flash red
+    dmgOvl.style.opacity = '1';
+    setTimeout(() => {
+      dmgOvl.style.opacity = '0';
+      goTitle.textContent   = 'ARRECIFE DESTRUIDO';
+      goScore.textContent   = score + ' pts';
+      goMsg.innerHTML       = 'El pez león se come peces pequeños y juveniles que mantienen sano el arrecife. Al multiplicarse rápido, reduce la biodiversidad, deja menos peces nativos y debilita los corales hasta que el ecosistema se ve oscuro, vacío y cubierto de algas.';
+      goScreen.style.display = 'flex';
+    }, 800);
+  } else {
+    goScreen.classList.add('win-ending');
+    goScreen.classList.remove('reef-ending');
+    goTitle.innerHTML     = '<span class="win-prize">🍬</span><br>GANASTE UN DULCE, FELICIDADES';
+    goScore.textContent   = score + ' pts';
+    goMsg.innerHTML       = 'Reducir la población del pez león es importante porque es una especie invasora: come peces pequeños y juveniles que ayudan a mantener sano el arrecife. Cuando hay demasiados peces león, bajan los peces nativos, se rompe el equilibrio del ecosistema y los corales quedan más débiles.';
+    goScreen.style.display = 'flex';
+  }
+}
+
+// ═══════════════════════════════════════════════
+//  MAIN LOOP
+// ═══════════════════════════════════════════════
+function loop(ts) {
+  requestAnimationFrame(loop);
+  if (!gameStarted) return;
+
+  const dt = ts - lastTime;
+  lastTime = ts;
+  pollGamepadPause();
+  if (paused) return;
+  accumulator += dt;
+
+  while (accumulator >= STEP) {
+    if (!gameOver) {
+      movePlayer();
+      lions.forEach(l => l.update());
+      collectibles.forEach(c => c.update());
+      updateParticles();
+      updateFloatTexts();
+      if (player.invincible > 0) player.invincible--;
+
+      // Check lion collisions
+      for (const lion of lions) {
+        if (lion.collides()) {
+          player.invincible = 110; // more recovery time after a hit
+          damageReef(15);
+          spawnParticles(player.x, player.y, '#ff4d00', 12);
+          addFloatText(player.x, player.y - 40, '-15 ARRECIFE', '#ff4040');
+          break;
+        }
+      }
+
+      // Check collectible collisions
+      for (let i = collectibles.length - 1; i >= 0; i--) {
+        const c = collectibles[i];
+        if (c.collides()) {
+          spawnParticles(c.x, c.y, '#ffd700', 8);
+          addFloatText(c.x, c.y - 20, `+${c.pts}`, '#ffd700');
+          score += c.pts;
+          scoreEl.textContent = score;
+          collectibles.splice(i, 1);
+          collectibles.push(new Collectible());
+        }
+      }
+    }
+    accumulator -= STEP;
+  }
+
+  // DRAW
+  ctx.clearRect(0, 0, W, H);
+  drawBackground(dead);
+  collectibles.forEach(c => c.draw());
+  lions.forEach(l => l.draw());
+  drawPlayer();
+  drawParticles();
+  drawFloatTexts();
+}
+
+// ═══════════════════════════════════════════════
+//  START
+// ═══════════════════════════════════════════════
+function startGame() {
+  document.getElementById('intro').style.display = 'none';
+  gameStarted = true;
+  buildSeaweeds();
+  spawnCollectibles(12);
+  applyLevelDifficulty();
+  startTimer();
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
